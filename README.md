@@ -109,9 +109,16 @@ Three GPU-accelerated models are trained and blended:
 
 **Key design decisions:**
 
-- **No feature scaling**: Tree models split on rank order, not magnitude. Applying `RobustScaler` to test data fitted on training data introduces distribution skew and hurts calibration on the Q1 2025 test period.
-- **No `compute_sample_weight`**: Explicit per-sample weights inflated rare-class probabilities, causing high prediction entropy and log-loss penalty. LightGBM's `class_weight='balanced'` is a milder and better-calibrated alternative.
 - **`mlogloss` as eval metric for XGBoost**: This directly optimises the competition metric, so early stopping fires at the optimal point instead of at a proxy like AUC.
+
+### Robustness & Engineering Notes
+
+The pipeline includes several "hidden" fixes for common pitfalls in this competition dataset:
+
+1. **ID Mapping Quirk**: In the raw data, the Wheel Profile Detector (WPD) keys the axle as a float string (e.g., `_1.0_`), while other tables use integers (`_1_`). Our SQL join in `data_loader.py` handles this formatting mismatch automatically to ensure no detector signals are lost.
+2. **GPU Stability**: We avoided the `LightGBMError: bin size 1138 cannot run on GPU` crash by encoding categorical features as integers instead of using the `astype('category')` dtype. This keeps the bin count below the GPU hardware limit (256) while maintaining full predictive power.
+3. **Column Standardization**: The pipeline resolves a naming discrepancy where the mileage table refers to the column as `loadedtravelledmiles` while other scripts often expect `mileage`.
+4. **Label Fallback**: The `build_submission` function includes a mapping safety net. This ensures that if the environment labels are ever shifted during a partial re-run, the final CSV columns are forcefully mapped to the correct alphabetical categories required by Kaggle.
 
 ### Handling Duplicate Rows
 
